@@ -29,22 +29,54 @@ class ConsoleTelegramClient(TelegramClient):
             
         self.id = (await self.get_me()).id
             
-
+            
+    async def main_menu(self):
+        print('---------------------------------')
+        print('Command list:')
+        print('/e - disconnect and close program')
+        print('/log_out - log_out your account')
+        print('/pn - next page of dialogs')
+        print('/pp - previous page of dialogs')
+        print('"chat id" - open chat by id')
+        print('/h - command list')
+        print('---------------------------------')
+        
+    
+    async def chat_menu(self):
+        print('---------------------------------')
+        print('Command list:')
+        print('/e - disconnect and close program')
+        print('/b - go to dialogs list')
+        print('/p "photo id" - open photo by id')
+        print('/h - command list')
+        print('---------------------------------')
+        
+        
     async def run(self):
+        dialog_num = None
+        dialogs_page = 0
         while True:
-            dialog_num = None
+            await self.main_menu()
             while dialog_num == None:
-                await self.print_dialogs()
+                await self.print_dialogs(dialogs_page)
                 command = (await asyncio.to_thread(input, self.input_msg)).strip()
-                if command.startswith('/exit'):
-                    print('Goodbye!')
+                if command.startswith('/e'):
                     await self.disconnect()
                     return
-                elif command.startswith('/help'):
-                    print('Command list:')
-                    print('/exit - disconnect and close program')
+                elif command.startswith('/h'):
+                    await self.main_menu()
                 elif command.isdigit():
                     dialog_num = int(command)
+                elif command.startswith('/log_out'):
+                    await self.log_out()
+                    return
+                elif command.startswith('/np'):
+                    dialogs_num = len(await self.get_dialogs())+14
+                    if dialogs_page < dialogs_num:
+                        dialogs_page += 1
+                elif command.startswith('/pp'):
+                    if dialogs_page > 0:
+                        dialogs_page -= 1
                 else:
                     print('Use commands please! Input "help" for more information')
                     
@@ -54,6 +86,7 @@ class ConsoleTelegramClient(TelegramClient):
             
             dialog = (await self.get_dialogs())[dialog_num]
             entity = dialog.entity
+            await self.chat_menu()
             print(f'Dialog with {dialog.title}')
             for msg in [i async for i in self.iter_messages(entity, limit=20)][::-1]:
                 if msg.from_id and msg.from_id.user_id == self.id:
@@ -64,17 +97,13 @@ class ConsoleTelegramClient(TelegramClient):
                 
             while dialog_num != None:
                 command = (await asyncio.to_thread(input, 'Input message or command: ')).strip()
-                if command.startswith('/exit'):
-                    print('Goodbye!')
+                if command.startswith('/e'):
                     await self.disconnect()
                     return
-                elif command.startswith('/back'):
+                elif command.startswith('/b'):
                     dialog_num = None
-                elif command.startswith('/help'):
-                    print('Command list:')
-                    print('/exit - disconnect and close program')
-                    print('/back - go to dialogs list')
-                    print('/p "photo id" - open photo by id')
+                elif command.startswith('/h'):
+                    await self.chat_menu()
                 elif command.startswith('/p'):
                     img_path = f'download/{command.split()[1]}.jpg'
                     if os.path.exists(img_path):
@@ -87,12 +116,12 @@ class ConsoleTelegramClient(TelegramClient):
                 await asyncio.sleep(0.1)
             
     
-    async def print_dialogs(self):
+    async def print_dialogs(self, dialogs_page):
         dialogs = await self.get_dialogs()
-        for i, dialog in enumerate(dialogs):
+        for i, dialog in enumerate(dialogs[15*dialogs_page:15*(dialogs_page+1)]):
             msg = await self.get_message(dialog.message)
             title = dialog.title
-            print(f'{i}. {title}: {msg}')
+            print(f'{15*dialogs_page+i}. {title}: {msg}')
 
     
     async def get_message(self, message):
@@ -151,6 +180,7 @@ async def main():
     except Exception as e:
         print(e)
         await client.disconnect()
+    print('Goodbye!')
 
 
 if __name__ == '__main__':
