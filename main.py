@@ -9,6 +9,7 @@ class ConsoleTelegramClient(TelegramClient):
         print('Initialization...')
         super().__init__(session_user_id, api_id, api_hash, device_model="Linux 5.15.0", system_version="Ubuntu 20.04.6 LTS")
         self.add_event_handler(self.message_handler, events.NewMessage(incoming=True))
+        self.add_event_handler(self.update_dialogs_list, events.ChatAction)
         self.input_msg = 'Input command or dialog id: '
         if not os.path.exists('download'):
             os.mkdir('download')
@@ -28,7 +29,7 @@ class ConsoleTelegramClient(TelegramClient):
             await self.start()
             
         self.id = (await self.get_me()).id
-            
+        
             
     async def main_menu(self):
         print('---------------------------------')
@@ -53,6 +54,7 @@ class ConsoleTelegramClient(TelegramClient):
         
         
     async def run(self):
+        await self.update_dialogs_list()
         dialog_num = None
         dialogs_page = 0
         while True:
@@ -71,9 +73,10 @@ class ConsoleTelegramClient(TelegramClient):
                     await self.log_out()
                     return
                 elif command.startswith('/np'):
-                    dialogs_num = len(await self.get_dialogs())+14
+                    dialogs_num = (len(self.dialogs_list)+14)//15 - 1
                     if dialogs_page < dialogs_num:
                         dialogs_page += 1
+                    print(dialogs_page)
                 elif command.startswith('/pp'):
                     if dialogs_page > 0:
                         dialogs_page -= 1
@@ -84,7 +87,7 @@ class ConsoleTelegramClient(TelegramClient):
             
             
             
-            dialog = (await self.get_dialogs())[dialog_num]
+            dialog = self.dialogs_list[dialog_num]
             entity = dialog.entity
             await self.chat_menu()
             print(f'Dialog with {dialog.title}')
@@ -117,7 +120,7 @@ class ConsoleTelegramClient(TelegramClient):
             
     
     async def print_dialogs(self, dialogs_page):
-        dialogs = await self.get_dialogs()
+        dialogs = self.dialogs_list
         for i, dialog in enumerate(dialogs[15*dialogs_page:15*(dialogs_page+1)]):
             msg = await self.get_message(dialog.message)
             title = dialog.title
@@ -167,6 +170,9 @@ class ConsoleTelegramClient(TelegramClient):
         msg = await self.get_message(event.message)
         print(f'\n[New messange] {name}: {msg}\nKeep input: ', end='')
         
+    
+    async def update_dialogs_list(self, event=None):
+        self.dialogs_list = await self.get_dialogs()
         
 async def main():
     load_dotenv()
