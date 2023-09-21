@@ -2,14 +2,16 @@ import asyncio
 from telethon import TelegramClient, events, types
 import os
 from dotenv import load_dotenv
-
+from PIL import Image
 
 class ConsoleTelegramClient(TelegramClient):
     def __init__(self, session_user_id, api_id, api_hash):
         print('Initialization...')
         super().__init__(session_user_id, api_id, api_hash, device_model="Linux 5.15.0", system_version="Ubuntu 20.04.6 LTS")
-        self.add_event_handler(self.message_handler, events.NewMessage)
+        self.add_event_handler(self.message_handler, events.NewMessage(incoming=True))
         self.input_msg = 'Input command or dialog id: '
+        if not os.path.exists('download'):
+            os.mkdir('download')
         print('Initialization complited')
         
 
@@ -34,16 +36,13 @@ class ConsoleTelegramClient(TelegramClient):
             while dialog_num == None:
                 await self.print_dialogs()
                 command = (await asyncio.to_thread(input, self.input_msg)).strip()
-                if command.startswith('exit'):
+                if command.startswith('/exit'):
                     print('Goodbye!')
                     await self.disconnect()
                     return
-                elif command.startswith('help'):
+                elif command.startswith('/help'):
                     print('Command list:')
-                    print('exit - disconnect and close program')
-                    print('dialogs - outputs list of dialogs')
-                elif command.startswith('dialogs'):
-                    await self.print_dialogs()
+                    print('/exit - disconnect and close program')
                 elif command.isdigit():
                     dialog_num = int(command)
                 else:
@@ -75,6 +74,13 @@ class ConsoleTelegramClient(TelegramClient):
                     print('Command list:')
                     print('/exit - disconnect and close program')
                     print('/back - go to dialogs list')
+                    print('/p "photo id" - open photo by id')
+                elif command.startswith('/p'):
+                    img_path = f'download/{command.split()[1]}.jpg'
+                    if os.path.exists(img_path):
+                        Image.open(img_path).show()
+                    else:
+                        print('incorrect image id')
                 else:
                     await self.send_message(entity, command)
                     
@@ -94,10 +100,19 @@ class ConsoleTelegramClient(TelegramClient):
         if message.message:
             msg += message.message.split('\n')[0]
         if message.media:
-            if msg:
-                msg += ' *media*'
+            # print(message.media)
+            if type(message.media) == types.MessageMediaPhoto:
+                if not os.path.exists(f'download/{message.media.photo.id}.jpg'):
+                    await self.download_media(message, f'download/{message.media.photo.id}.jpg')
+                if msg:
+                    msg += f' *photo({message.media.photo.id})*'
+                else:
+                    msg += f'*photo({message.media.photo.id})*'
             else:
-                msg += '*media*'
+                if msg:
+                    msg += ' *anower media*'
+                else:
+                    msg += '*anower media*'
         if type(message) == types.MessageService:
             msg = '*service meassage*'
         if msg == '':
@@ -119,10 +134,9 @@ class ConsoleTelegramClient(TelegramClient):
     
     async def message_handler(self, event):
         # in message to yourself event.from_id == None
-        if event.from_id and event.from_id.user_id != self.id:
-            name = await self.get_name_from_event(event)
-            msg = await self.get_message(event.message)
-            print(f'\n[New messange] {name}: {msg}\n{self.input_msg}', end='')
+        name = await self.get_name_from_event(event)
+        msg = await self.get_message(event.message)
+        print(f'\n[New messange] {name}: {msg}\nKeep input: ', end='')
         
         
 async def main():
