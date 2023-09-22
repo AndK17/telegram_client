@@ -5,12 +5,16 @@ from dotenv import load_dotenv
 from PIL import Image
 
 class ConsoleTelegramClient(TelegramClient):
-    def __init__(self, session_user_id, api_id, api_hash):
+    def __init__(self, session_user_id, api_id, api_hash, page_size=15):
         print('Initialization...')
         super().__init__(session_user_id, api_id, api_hash, device_model="Linux 5.15.0", system_version="Ubuntu 20.04.6 LTS")
+        
+        self.page_size = page_size
+        self.input_msg = 'Input command or dialog id: '
+        
         self.add_event_handler(self.message_handler, events.NewMessage(incoming=True))
         self.add_event_handler(self.update_dialogs_list, events.ChatAction)
-        self.input_msg = 'Input command or dialog id: '
+        
         if not os.path.exists('download'):
             os.mkdir('download')
         print('Initialization complited')
@@ -31,24 +35,24 @@ class ConsoleTelegramClient(TelegramClient):
         self.id = (await self.get_me()).id
         
             
-    async def main_menu(self):
+    async def print_main_menu(self):
         print('---------------------------------')
         print('Command list:')
-        print('/e - disconnect and close program')
-        print('/log_out - log_out your account')
-        print('/pn - next page of dialogs')
+        print('/np - next page of dialogs')
         print('/pp - previous page of dialogs')
         print('"chat id" - open chat by id')
+        print('/e - disconnect and close program')
+        print('/log_out - log_out your account')
         print('/h - command list')
         print('---------------------------------')
         
     
-    async def chat_menu(self):
+    async def print_chat_menu(self):
         print('---------------------------------')
         print('Command list:')
-        print('/e - disconnect and close program')
-        print('/b - go to dialogs list')
         print('/p "photo id" - open photo by id')
+        print('/b - go to dialogs list')
+        print('/e - disconnect and close program')
         print('/h - command list')
         print('---------------------------------')
         
@@ -58,7 +62,7 @@ class ConsoleTelegramClient(TelegramClient):
         dialog_num = None
         dialogs_page = 0
         while True:
-            await self.main_menu()
+            await self.print_main_menu()
             while dialog_num == None:
                 await self.print_dialogs(dialogs_page)
                 command = (await asyncio.to_thread(input, self.input_msg)).strip()
@@ -66,14 +70,14 @@ class ConsoleTelegramClient(TelegramClient):
                     await self.disconnect()
                     return
                 elif command.startswith('/h'):
-                    await self.main_menu()
+                    await self.print_main_menu()
                 elif command.isdigit():
                     dialog_num = int(command)
                 elif command.startswith('/log_out'):
                     await self.log_out()
                     return
                 elif command.startswith('/np'):
-                    dialogs_num = (len(self.dialogs_list)+14)//15 - 1
+                    dialogs_num = (len(self.dialogs_list)+self.page_size-1)//self.page_size - 1
                     if dialogs_page < dialogs_num:
                         dialogs_page += 1
                     print(dialogs_page)
@@ -89,14 +93,9 @@ class ConsoleTelegramClient(TelegramClient):
             
             dialog = self.dialogs_list[dialog_num]
             entity = dialog.entity
-            await self.chat_menu()
+            await self.print_chat_menu()
             print(f'Dialog with {dialog.title}')
-            for msg in [i async for i in self.iter_messages(entity, limit=20)][::-1]:
-                if msg.from_id and msg.from_id.user_id == self.id:
-                    sender = 'me'
-                else:
-                    sender = dialog.title
-                print(f'{sender}[{msg.date.strftime("%Y-%m-%d %H:%M")}]: ', await self.get_message(msg))
+            await self.print_messages(entity, dialog)
                 
             while dialog_num != None:
                 command = (await asyncio.to_thread(input, 'Input message or command: ')).strip()
@@ -106,7 +105,7 @@ class ConsoleTelegramClient(TelegramClient):
                 elif command.startswith('/b'):
                     dialog_num = None
                 elif command.startswith('/h'):
-                    await self.chat_menu()
+                    await self.print_chat_menu()
                 elif command.startswith('/p'):
                     img_path = f'download/{command.split()[1]}.jpg'
                     if os.path.exists(img_path):
@@ -119,12 +118,21 @@ class ConsoleTelegramClient(TelegramClient):
                 await asyncio.sleep(0.1)
             
     
+    async def print_messages(self, entity, dialog):
+        for msg in [i async for i in self.iter_messages(entity, limit=self.page_size)][::-1]:
+            if msg.from_id and msg.from_id.user_id == self.id:
+                sender = 'me'
+            else:
+                sender = dialog.title
+            print(f'{sender}[{msg.date.strftime("%Y-%m-%d %H:%M")}]: ', await self.get_message(msg))
+    
+    
     async def print_dialogs(self, dialogs_page):
         dialogs = self.dialogs_list
-        for i, dialog in enumerate(dialogs[15*dialogs_page:15*(dialogs_page+1)]):
+        for i, dialog in enumerate(dialogs[self.page_size*dialogs_page:self.page_size*(dialogs_page+1)]):
             msg = await self.get_message(dialog.message)
             title = dialog.title
-            print(f'{15*dialogs_page+i}. {title}: {msg}')
+            print(f'{self.page_size*dialogs_page+i}. {title}: {msg}')
 
     
     async def get_message(self, message):
@@ -132,7 +140,6 @@ class ConsoleTelegramClient(TelegramClient):
         if message.message:
             msg += message.message.split('\n')[0]
         if message.media:
-            # print(message.media)
             if type(message.media) == types.MessageMediaPhoto:
                 if not os.path.exists(f'download/{message.media.photo.id}.jpg'):
                     await self.download_media(message, f'download/{message.media.photo.id}.jpg')
@@ -155,17 +162,19 @@ class ConsoleTelegramClient(TelegramClient):
     async def get_name_from_event(self, event):
         chat = await event.get_chat()
         name = ''
-        if chat.first_name:
-            name += chat.first_name
-        if chat.last_name:
-            name += chat.last_name
-        if name == '':
-            name = chat.username
+        if type(chat) == types.User:
+            if chat.first_name:
+                name += chat.first_name
+            if chat.last_name:
+                name += chat.last_name
+            if name == '':
+                name = chat.username
+        else:
+            name = chat.title
         return name
     
     
     async def message_handler(self, event):
-        # in message to yourself event.from_id == None
         name = await self.get_name_from_event(event)
         msg = await self.get_message(event.message)
         print(f'\n[New messange] {name}: {msg}\nKeep input: ', end='')
