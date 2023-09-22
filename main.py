@@ -51,6 +51,7 @@ class ConsoleTelegramClient(TelegramClient):
         print('---------------------------------')
         print('Command list:')
         print('/p "photo id" - open photo by id')
+        print('/sf "file name" - send file from /download by name. Example: "/sf hello.jpg"')
         print('/b - go to dialogs list')
         print('/e - disconnect and close program')
         print('/h - command list')
@@ -80,7 +81,6 @@ class ConsoleTelegramClient(TelegramClient):
                     dialogs_num = (len(self.dialogs_list)+self.page_size-1)//self.page_size - 1
                     if dialogs_page < dialogs_num:
                         dialogs_page += 1
-                    print(dialogs_page)
                 elif command.startswith('/pp'):
                     if dialogs_page > 0:
                         dialogs_page -= 1
@@ -112,6 +112,12 @@ class ConsoleTelegramClient(TelegramClient):
                         Image.open(img_path).show()
                     else:
                         print('incorrect image id')
+                elif command.startswith('/sf'):
+                    img_path = f'download/{command.split()[1]}'
+                    if os.path.exists(img_path):
+                        await self.send_file(entity, img_path)
+                    else:
+                        print('incorrect image name')
                 else:
                     await self.send_message(entity, command)
                     
